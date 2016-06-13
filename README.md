@@ -5,3 +5,5 @@ See [Useless Machine in Action](https://www.youtube.com/watch?v=EgTnfTqycV0)
 
 ## Schematics
 
+![Useless Machine Schematics](doc/Useless-Machine-Schematic.png)
+
