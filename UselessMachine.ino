@@ -17,8 +17,12 @@
  * + two servos connected (when available)
  * + write more sequences
  * + mechanics: build the box (when size is known)
- * - switch to use nano -> can fit in the box
- * - update regulator to schematics
+ * + switch to use nano -> can fit in the box
+ * + update regulator to schematics
+ * + change Arduino NANO to schematics
+ * + readme file
+ * + remove startup blink from code
+ *    - test without blink
  * - battery use
  * - power save
  *   +- mosfet to switch power off -> tried but not yet good
@@ -44,6 +48,7 @@ const int coverServoPin = 10;
 
 
 // Positions for servos
+const int FINGER_OUT_TOUCH = 60;
 const int FINGER_OUT = 62;
 const int FINGER_NEAR_OUT = 75;
 const int FINGER_MID = 100;
@@ -114,7 +119,7 @@ void receiveEvent(int howMany) {
 */
 
 void setup() {
-  startupBlink();
+  //startupBlink();
   
   pinMode(onOffSwitchPin, INPUT);
   //pinMode(servoPowerSwitchPin, OUTPUT);
@@ -124,7 +129,7 @@ void setup() {
 
   fingerServo.write(FINGER_IN);
   coverServo.write(COVER_CLOSED);
-  delay(500);
+  //delay(100);
 
   // UselessMachine is I2C slave
   //Wire.begin(8);                // join i2c bus with address #8
@@ -138,6 +143,8 @@ int currentState = STATE_MACHINE_OFF;
 int seq = 0;
 
 void sequence(int num) {
+  const int NUM_OF_FUNCS = 11;
+  num = random(NUM_OF_FUNCS);
   switch (num) {
     case 0: seq_0(); break;
     case 1: seq_1(); break;
@@ -159,6 +166,22 @@ void sequence(int num) {
   }
   seq++;
 }
+
+
+void sequence_switch_off_lately() {
+  const int NUM_OF_FUNCS = 2;
+  int num = random(NUM_OF_FUNCS);
+  switch (num) {
+    case 0: seq_switch_off_lately_0(); break;
+    case 1: seq_switch_off_lately_1(); break;
+    case 2: seq_switch_off_lately_2(); break;
+    default:
+      // fallback
+      seq_switch_off_lately_0();
+      break;
+  }
+}
+
 
 void loop() {
   int onOffState = LOW;
@@ -218,6 +241,86 @@ void move(Servo &s, int position, int delayMs) {
   }
 }
 
+void seq_switch_off_early_0() 
+{
+  delay(1000);
+  move(fingerServo, FINGER_IN, SPEED_MEDIUM);
+  delay(300);
+  move(coverServo, COVER_CLOSED, SPEED_EXTRA_SLOW);
+}
+
+
+// Check whether on-off -switch is put off during sequence.
+// Does fallback sequence in that case.
+// Returns true if switch was off, false is switch is not moved.
+bool is_switch_off_when_cover_opened() 
+{
+  int onOffState = LOW;
+  // read on off switch state
+  onOffState = digitalRead(onOffSwitchPin);
+  if (onOffState == LOW) {
+    seq_switch_off_early_0();
+    return true;
+  }
+  return false;
+}
+
+/*
+ * 0 hitaasti kytkimelle, nopea naputus ja nopeasti kiinni
+ * 1 täysillä nappi pohjaan ja heti kiinni
+ * 2 vain heti takaisin kiinni
+ * 
+ */
+void seq_switch_off_lately_0() 
+{
+  delay(700);
+  move(fingerServo, FINGER_OUT, SPEED_EXTRA_SLOW);
+  delay(300);
+  
+  for (int i=0; i<5; ++i) {
+    move(fingerServo, FINGER_NEAR_OUT, SPEED_NOW);
+    delay(50);
+    move(fingerServo, FINGER_OUT_TOUCH, SPEED_NOW);
+    delay(50);
+  }
+  delay(300);
+  move(fingerServo, FINGER_IN, SPEED_NOW);
+  delay(300);
+  move(coverServo, COVER_CLOSED, SPEED_NOW);
+}
+
+
+void seq_switch_off_lately_1() 
+{
+  move(fingerServo, FINGER_OUT, SPEED_NOW);
+  delay(200);
+  move(fingerServo, FINGER_IN, SPEED_NOW);
+  delay(200);
+  move(coverServo, COVER_CLOSED, SPEED_NOW);
+}
+
+void seq_switch_off_lately_2() 
+{
+  move(fingerServo, FINGER_IN, SPEED_SLOW);
+  delay(200);
+  move(coverServo, COVER_CLOSED, SPEED_NOW);
+}
+
+// Check whether on-off -switch is put off during sequence.
+// Does fallback sequence in that case.
+// Returns true if switch was off, false is switch is not moved.
+bool is_switch_off_when_finger_out() 
+{
+  int onOffState = LOW;
+  // read on off switch state
+  onOffState = digitalRead(onOffSwitchPin);
+  if (onOffState == LOW) {
+    sequence_switch_off_lately();
+    return true;
+  }
+  return false;
+}
+
 /* 
  *  Sequences
  * 0 normaali (MEDIUM)
@@ -238,11 +341,14 @@ void move(Servo &s, int position, int delayMs) {
  */
 
 
-
 void seq_0() {
   move(coverServo, COVER_OPEN, SPEED_MEDIUM);
   delay(300);
+  if (is_switch_off_when_cover_opened()) return;
+  
   move(fingerServo, FINGER_NEAR_OUT, SPEED_MEDIUM);
+  if (is_switch_off_when_finger_out()) return;
+  
   move(fingerServo, FINGER_OUT, SPEED_NOW);
   delay(300);
   move(fingerServo, FINGER_IN, SPEED_MEDIUM);
@@ -253,6 +359,8 @@ void seq_0() {
 void seq_1() {
   move(coverServo, COVER_OPEN, SPEED_FAST);
   delay(100);
+  if (is_switch_off_when_cover_opened()) return;
+  
   move(fingerServo, FINGER_NEAR_OUT, SPEED_FAST);
   move(fingerServo, FINGER_OUT, SPEED_NOW);
   delay(100);
@@ -264,7 +372,10 @@ void seq_1() {
 void seq_2() {
   move(coverServo, COVER_OPEN, SPEED_SLOW);
   delay(300);
+  if (is_switch_off_when_cover_opened()) return;
+  
   move(fingerServo, FINGER_NEAR_OUT, SPEED_SLOW);
+  if (is_switch_off_when_finger_out()) return;
   move(fingerServo, FINGER_OUT, SPEED_NOW);
   delay(300);
   move(fingerServo, FINGER_IN, SPEED_SLOW);
@@ -275,7 +386,10 @@ void seq_2() {
 void seq_3() {
   move(coverServo, COVER_OPEN, SPEED_EXTRA_SLOW);
   delay(500);
+  if (is_switch_off_when_cover_opened()) return;
+  
   move(fingerServo, FINGER_NEAR_OUT, SPEED_EXTRA_SLOW);
+  if (is_switch_off_when_finger_out()) return;
   move(fingerServo, FINGER_OUT, SPEED_NOW);
   delay(500);
   move(fingerServo, FINGER_IN, SPEED_EXTRA_SLOW);
@@ -286,6 +400,8 @@ void seq_3() {
 void seq_4() {
   move(coverServo, COVER_OPEN_MIN, SPEED_SLOW);
   delay(300);
+  if (is_switch_off_when_cover_opened()) return;
+  
   move(fingerServo, FINGER_NEAR_OUT, SPEED_SLOW);
   move(fingerServo, FINGER_OUT, SPEED_NOW);
   delay(300);
@@ -297,7 +413,10 @@ void seq_4() {
 void seq_5() {
   move(coverServo, COVER_OPEN, SPEED_FAST);
   delay(100);
+  if (is_switch_off_when_cover_opened()) return;
+  
   move(fingerServo, FINGER_NEAR_OUT, SPEED_FAST);
+  if (is_switch_off_when_finger_out()) return;
   move(fingerServo, FINGER_OUT, SPEED_NOW);
   delay(100);
   move(fingerServo, FINGER_IN, SPEED_NOW);
@@ -308,6 +427,8 @@ void seq_5() {
 void seq_6() {
   move(coverServo, COVER_MID, SPEED_EXTRA_SLOW);
   delay(700);
+  if (is_switch_off_when_cover_opened()) return;
+  
   move(coverServo, COVER_CLOSED, SPEED_NOW);
   delay(2000);
 
@@ -318,11 +439,14 @@ void seq_6() {
     delay(40);
   }
   delay(1000);
+  if (is_switch_off_when_cover_opened()) return;
 
   move(coverServo, COVER_OPEN_MIN, SPEED_FAST);
   delay(300);
+  if (is_switch_off_when_cover_opened()) return;
 
   move(fingerServo, FINGER_NEAR_OUT, SPEED_FAST);
+  if (is_switch_off_when_finger_out()) return;
   move(fingerServo, FINGER_OUT, SPEED_NOW);
   delay(100);
   move(fingerServo, FINGER_IN, SPEED_NOW);
@@ -336,7 +460,10 @@ void seq_6() {
 void seq_7() {
   move(coverServo, COVER_OPEN, SPEED_SLOW);
   delay(500);
+  if (is_switch_off_when_cover_opened()) return;
+  
   move(fingerServo, FINGER_NEAR_OUT, SPEED_SLOW);
+  if (is_switch_off_when_finger_out()) return;
   move(fingerServo, FINGER_OUT, SPEED_NOW);
   delay(100);
   move(fingerServo, FINGER_IN, SPEED_FAST);
@@ -347,7 +474,10 @@ void seq_7() {
 void seq_8() {
   move(coverServo, COVER_OPEN, SPEED_FAST);
   delay(100);
+  if (is_switch_off_when_cover_opened()) return;
+  
   move(fingerServo, FINGER_NEAR_OUT, SPEED_FAST);
+  if (is_switch_off_when_finger_out()) return;
   move(fingerServo, FINGER_OUT, SPEED_NOW);
   delay(300);
   move(fingerServo, FINGER_IN, SPEED_SLOW);
@@ -359,20 +489,27 @@ void seq_9() {
   delay(1000);
   move(coverServo, COVER_SLIGHTLY, SPEED_EXTRA_SLOW);
   delay(500);
+  if (is_switch_off_when_cover_opened()) return;
   move(coverServo, COVER_MID, SPEED_EXTRA_SLOW);
   delay(500);
+  if (is_switch_off_when_cover_opened()) return;
   move(coverServo, COVER_OPEN_MIN, SPEED_EXTRA_SLOW);
   delay(500);
+  if (is_switch_off_when_cover_opened()) return;
   move(coverServo, COVER_OPEN, SPEED_EXTRA_SLOW);
   delay(500);
+  if (is_switch_off_when_cover_opened()) return;
   move(coverServo, COVER_OPEN_FULL, SPEED_EXTRA_SLOW);
   delay(500);
+  if (is_switch_off_when_cover_opened()) return;
   
   move(fingerServo, FINGER_MID, SPEED_EXTRA_SLOW);
   delay(500);
   move(fingerServo, FINGER_NEAR_OUT, SPEED_EXTRA_SLOW);
   delay(500);
+  if (is_switch_off_when_finger_out()) return;
   move(fingerServo, FINGER_OUT, SPEED_NOW);
+
   
   delay(500);
   move(fingerServo, FINGER_IN, SPEED_EXTRA_SLOW);
@@ -383,6 +520,8 @@ void seq_9() {
 void seq_10() {
   move(coverServo, COVER_OPEN, SPEED_MEDIUM);
   delay(100);
+  if (is_switch_off_when_cover_opened()) return;
+
   move(fingerServo, FINGER_NEAR_OUT, SPEED_SLOW);
   for (int i=0; i<5; ++i) {
     move(coverServo, COVER_MID, SPEED_NOW);
@@ -397,6 +536,7 @@ void seq_10() {
   delay(500);
 
   move(fingerServo, FINGER_NEAR_OUT, SPEED_SLOW);
+  if (is_switch_off_when_finger_out()) return;
   move(fingerServo, FINGER_OUT, SPEED_NOW);
   delay(100);
   move(fingerServo, FINGER_IN, SPEED_FAST);
